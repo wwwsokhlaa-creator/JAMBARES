@@ -1,0 +1,41 @@
+
+name: Construire le ZIP JAMBARE
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+
+      - name: Vérifier les fichiers
+        run: |
+          test -f index.html
+          test -f style.css
+          test -f app.js
+          test -f manifest.webmanifest
+          test -f sw.js
+
+      - name: Créer le ZIP
+        run: |
+          mkdir -p dist
+          cp index.html style.css app.js manifest.webmanifest sw.js dist/
+          cd dist
+          zip -r ../JAMBARE.zip .
+
+      - name: Publier le ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: JAMBARE
+          path: JAMBARE.zip
+          retention-days: 30
