@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#14291f">
   <title>JAMBARE – Académie militaire</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
   <header class="header">
@@ -46,5 +47,13 @@
 
   <footer>JAMBARE © 2026 – Prototype pédagogique</footer>
   <script src="app.js"></script>
+  <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .catch(error => console.error("Erreur :", error));
+  });
+}
+  </script>
 </body>
 </html>
