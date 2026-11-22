@@ -1,0 +1,128 @@
+
+:root {
+  --green: #14291f;
+  --green-light: #234b36;
+  --gold: #c7a65b;
+  --background: #f2f4f1;
+  --white: #ffffff;
+  --text: #202923;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: var(--background);
+  color: var(--text);
+}
+
+.header {
+  background: var(--green);
+  color: var(--white);
+  text-align: center;
+  padding: 35px 15px;
+  border-bottom: 4px solid var(--gold);
+}
+
+.brand {
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: 5px;
+}
+
+.header p {
+  font-size: 12px;
+  letter-spacing: 2px;
+  margin-bottom: 0;
+}
+
+.container {
+  max-width: 1050px;
+  margin: auto;
+  padding: 25px 18px;
+}
+
+.welcome {
+  background: var(--white);
+  padding: 35px 22px;
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: 0 3px 15px #00000010;
+}
+
+.welcome h1 {
+  color: var(--green);
+  font-size: 27px;
+}
+
+.welcome p {
+  line-height: 1.7;
+}
+
+button {
+  background: var(--green-light);
+  color: white;
+  border: none;
+  padding: 14px 24px;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: bold;
+  margin-top: 15px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--green);
+}
+
+.modules {
+  margin-top: 35px;
+}
+
+.modules h2 {
+  color: var(--green);
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.module {
+  background: var(--white);
+  border-left: 4px solid var(--gold);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 10px #00000008;
+}
+
+.module h3 {
+  color: var(--green-light);
+}
+
+.module p {
+  line-height: 1.5;
+}
+
+footer {
+  background: var(--green);
+  color: white;
+  text-align: center;
+  padding: 20px;
+  margin-top: 35px;
+  font-size: 13px;
+}
+
+@media (max-width: 480px) {
+  .brand {
+    font-size: 30px;
+  }
+
+  .welcome h1 {
+    font-size: 23px;
+  }
+}
