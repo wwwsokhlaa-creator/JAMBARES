@@ -1,4 +1,10 @@
+const SUPABASE_URL = "https://bjntikycmkojgthouadz.supabase.co";
+const SUPABASE_KEY = "sb_publishable_uxVqnaVg33eYYNQViBHtpw_RZuVjCVE";
 
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 const startButton = document.getElementById("startButton");
 const modules = document.getElementById("modules");
 
