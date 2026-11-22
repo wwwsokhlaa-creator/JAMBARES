@@ -1,0 +1,13 @@
+
+{
+  "name": "JAMBARE - Académie militaire",
+  "short_name": "JAMBARE",
+  "description": "Académie numérique militaire pédagogique",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f4f1",
+  "theme_color": "#14291f"
+}
