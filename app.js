@@ -1,5 +1,5 @@
-const SUPABASE_URL = "https://bjntikycmkojgthouadz.supabase.co";
-const SUPABASE_KEY = "sb_publishable_uxVqnaVg33eYYNQViBHtpw_RZuVjCVE";
+const SUPABASE_URL = window.JAMBARE_CONFIG.SUPABASE_URL;
+const SUPABASE_KEY = window.JAMBARE_CONFIG.SUPABASE_KEY;
 
 const supabaseClient = window.supabase.createClient(
   SUPABASE_URL,
