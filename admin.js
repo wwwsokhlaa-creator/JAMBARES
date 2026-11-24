@@ -1,6 +1,7 @@
 
 (() => {
   async function initAdmin() {
+    alert("Le fichier admin.js est exécuté.");
     const client = window.supabaseClient;
 
     if (!client) {
