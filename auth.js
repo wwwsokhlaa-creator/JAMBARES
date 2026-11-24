@@ -149,7 +149,10 @@ const client = window.supabaseClient;
     }
   });
 
-  client.auth.getSession().then(({ data }) => {
-    checkAccess(data.session);
-  });
+  client.auth.getSession().then(async ({ data }) => {
+  await checkAccess(data.session);
+  if (window.initJambareAdmin) {
+    await window.initJambareAdmin();
+  }
+});
 })();
