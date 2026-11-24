@@ -111,4 +111,5 @@
   } else {
     initAdmin();
   }
+window.initJambareAdmin = initAdmin;
 })();
