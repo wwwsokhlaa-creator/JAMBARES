@@ -3,6 +3,8 @@
   let loading = false;
   let currentUser = null;
   let editingCourseId = null;
+  let selectedCourseId = null;
+  let editingLessonId = null;
 
   const client = () => window.supabaseClient;
 
@@ -115,6 +117,46 @@
           </div>
 
           <div id="admin-courses">Chargement des formations...</div>
+
+          <hr>
+          <div id="lesson-manager" hidden>
+            <h3>Gestion des leçons</h3>
+            <p id="lesson-course-name"></p>
+
+            <form id="lesson-form" style="background:#fff;color:#222;padding:15px;border-radius:10px;">
+              <h3 id="lesson-form-title">Ajouter une leçon</h3>
+
+              <label for="lesson-title">Titre de la leçon *</label>
+              <input id="lesson-title" type="text" required maxlength="200"
+                placeholder="Titre de la leçon"
+                style="display:block;width:100%;padding:12px;margin:7px 0 14px;box-sizing:border-box;">
+
+              <label for="lesson-content">Contenu de la leçon *</label>
+              <textarea id="lesson-content" rows="9" required
+                placeholder="Écrivez ici le contenu pédagogique de la leçon..."
+                style="display:block;width:100%;padding:12px;margin:7px 0 14px;box-sizing:border-box;"></textarea>
+
+              <label for="lesson-position">Ordre d'affichage</label>
+              <input id="lesson-position" type="number" min="1" step="1" value="1"
+                style="display:block;width:100%;padding:12px;margin:7px 0 14px;box-sizing:border-box;">
+
+              <label style="display:flex;gap:9px;align-items:center;margin:12px 0;">
+                <input id="lesson-published" type="checkbox">
+                Publier immédiatement cette leçon
+              </label>
+
+              <button type="submit" id="save-lesson">Enregistrer la leçon</button>
+              <button type="button" id="cancel-lesson" hidden>Annuler la modification</button>
+              <p id="lesson-message" role="status"></p>
+            </form>
+
+            <div style="margin:15px 0;">
+              <button type="button" id="refresh-lessons">Actualiser les leçons</button>
+              <button type="button" id="close-lessons">Fermer la gestion des leçons</button>
+            </div>
+
+            <div id="admin-lessons">Chargement des leçons...</div>
+          </div>
         </div>
       `;
 
@@ -131,6 +173,16 @@
         saveCourse(event, db);
 
       document.getElementById("cancel-course").onclick = resetCourseForm;
+
+      document.getElementById("lesson-form").onsubmit = event =>
+        saveLesson(event, db);
+
+      document.getElementById("cancel-lesson").onclick = resetLessonForm;
+
+      document.getElementById("refresh-lessons").onclick = () =>
+        loadLessons(db);
+
+      document.getElementById("close-lessons").onclick = closeLessonManager;
 
       await loadUsers(db);
       await loadCourses(db);
@@ -267,7 +319,8 @@
       card.appendChild(publication);
 
       const actions = make("div");
-      actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;";
+      actions.style.cssText =
+        "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;";
 
       const edit = make("button", "Modifier");
       edit.type = "button";
@@ -279,11 +332,15 @@
       toggle.type = "button";
       toggle.onclick = () => toggleCourse(db, course);
 
+      const lessons = make("button", "Gérer les leçons");
+      lessons.type = "button";
+      lessons.onclick = () => openLessonManager(db, course);
+
       const remove = make("button", "Supprimer");
       remove.type = "button";
       remove.onclick = () => deleteCourse(db, course);
 
-      actions.append(edit, toggle, remove);
+      actions.append(edit, toggle, lessons, remove);
       card.appendChild(actions);
       area.appendChild(card);
     });
@@ -419,9 +476,258 @@
     }
 
     if (editingCourseId === course.id) resetCourseForm();
+    if (selectedCourseId === course.id) closeLessonManager();
 
     alert("Formation supprimée.");
     await loadCourses(db);
+  }
+
+  async function openLessonManager(db, course) {
+    selectedCourseId = course.id;
+    editingLessonId = null;
+
+    const manager = document.getElementById("lesson-manager");
+    manager.hidden = false;
+
+    document.getElementById("lesson-course-name").textContent =
+      "Formation sélectionnée : " + course.title;
+
+    resetLessonForm();
+    await loadLessons(db);
+
+    manager.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
+  function closeLessonManager() {
+    selectedCourseId = null;
+    editingLessonId = null;
+
+    const manager = document.getElementById("lesson-manager");
+    if (manager) manager.hidden = true;
+
+    const area = document.getElementById("admin-lessons");
+    if (area) area.innerHTML = "";
+
+    resetLessonForm();
+  }
+
+  async function loadLessons(db) {
+    const area = document.getElementById("admin-lessons");
+    if (!area || !selectedCourseId) return;
+
+    area.textContent = "Chargement des leçons...";
+
+    const { data, error } = await db
+      .from("lessons")
+      .select("id, course_id, title, content, position, is_published, created_at")
+      .eq("course_id", selectedCourseId)
+      .order("position", { ascending: true });
+
+    if (error) {
+      area.textContent = "Erreur de chargement des leçons : " + error.message;
+      return;
+    }
+
+    area.innerHTML = "";
+
+    if (!data || data.length === 0) {
+      area.textContent = "Aucune leçon enregistrée pour cette formation.";
+      return;
+    }
+
+    data.forEach(lesson => {
+      const card = make("article");
+      card.style.cssText =
+        "background:white;color:#222;padding:15px;margin:12px 0;border-radius:10px;";
+
+      card.appendChild(make("h4",
+        lesson.position + ". " + lesson.title
+      ));
+
+      const preview = lesson.content || "";
+      card.appendChild(make("p",
+        preview.length > 250 ? preview.slice(0, 250) + "..." : preview
+      ));
+
+      const publication = make("strong",
+        lesson.is_published ? "Publié" : "Non publié"
+      );
+      publication.style.color = lesson.is_published ? "green" : "#9a5b00";
+      card.appendChild(publication);
+
+      const actions = make("div");
+      actions.style.cssText =
+        "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;";
+
+      const edit = make("button", "Modifier");
+      edit.type = "button";
+      edit.onclick = () => editLesson(lesson);
+
+      const toggle = make("button",
+        lesson.is_published ? "Dépublier" : "Publier"
+      );
+      toggle.type = "button";
+      toggle.onclick = () => toggleLesson(db, lesson);
+
+      const remove = make("button", "Supprimer");
+      remove.type = "button";
+      remove.onclick = () => deleteLesson(db, lesson);
+
+      actions.append(edit, toggle, remove);
+      card.appendChild(actions);
+      area.appendChild(card);
+    });
+  }
+
+  async function saveLesson(event, db) {
+    event.preventDefault();
+
+    const message = document.getElementById("lesson-message");
+    const button = document.getElementById("save-lesson");
+
+    const title = document.getElementById("lesson-title").value.trim();
+    const content = document.getElementById("lesson-content").value.trim();
+    const position = Number(document.getElementById("lesson-position").value);
+    const is_published = document.getElementById("lesson-published").checked;
+
+    if (!selectedCourseId) {
+      message.textContent = "Aucune formation sélectionnée.";
+      return;
+    }
+
+    if (!title || !content) {
+      message.textContent = "Le titre et le contenu sont obligatoires.";
+      return;
+    }
+
+    if (!Number.isInteger(position) || position < 1) {
+      message.textContent = "L'ordre doit être un nombre entier supérieur à zéro.";
+      return;
+    }
+
+    const values = {
+      course_id: selectedCourseId,
+      title,
+      content,
+      position,
+      is_published
+    };
+
+    button.disabled = true;
+    message.textContent = "Enregistrement en cours...";
+
+    try {
+      let result;
+
+      if (editingLessonId) {
+        result = await db.from("lessons")
+          .update(values)
+          .eq("id", editingLessonId)
+          .eq("course_id", selectedCourseId);
+      } else {
+        result = await db.from("lessons").insert(values);
+      }
+
+      if (result.error) throw result.error;
+
+      message.textContent = "Leçon enregistrée avec succès.";
+      resetLessonForm();
+      await loadLessons(db);
+    } catch (error) {
+      message.textContent = "Erreur : " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function editLesson(lesson) {
+    editingLessonId = lesson.id;
+
+    document.getElementById("lesson-title").value = lesson.title || "";
+    document.getElementById("lesson-content").value = lesson.content || "";
+    document.getElementById("lesson-position").value = lesson.position || 1;
+    document.getElementById("lesson-published").checked =
+      !!lesson.is_published;
+
+    document.getElementById("lesson-form-title").textContent =
+      "Modifier la leçon";
+
+    document.getElementById("save-lesson").textContent =
+      "Enregistrer les modifications";
+
+    document.getElementById("cancel-lesson").hidden = false;
+
+    document.getElementById("lesson-form").scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }
+
+  function resetLessonForm() {
+    editingLessonId = null;
+
+    const form = document.getElementById("lesson-form");
+    if (!form) return;
+
+    form.reset();
+
+    document.getElementById("lesson-position").value = "1";
+
+    document.getElementById("lesson-form-title").textContent =
+      "Ajouter une leçon";
+
+    document.getElementById("save-lesson").textContent =
+      "Enregistrer la leçon";
+
+    document.getElementById("cancel-lesson").hidden = true;
+    document.getElementById("lesson-message").textContent = "";
+  }
+
+  async function toggleLesson(db, lesson) {
+    const action = lesson.is_published ? "dépublier" : "publier";
+
+    if (!confirm("Confirmer : " + action + " « " + lesson.title + " » ?")) {
+      return;
+    }
+
+    const { error } = await db.from("lessons")
+      .update({ is_published: !lesson.is_published })
+      .eq("id", lesson.id)
+      .eq("course_id", selectedCourseId);
+
+    if (error) {
+      alert("Modification impossible : " + error.message);
+      return;
+    }
+
+    await loadLessons(db);
+  }
+
+  async function deleteLesson(db, lesson) {
+    const confirmed = confirm(
+      "Supprimer définitivement la leçon « " +
+      lesson.title + " » ?"
+    );
+
+    if (!confirmed) return;
+
+    const { error } = await db.from("lessons")
+      .delete()
+      .eq("id", lesson.id)
+      .eq("course_id", selectedCourseId);
+
+    if (error) {
+      alert("Suppression impossible : " + error.message);
+      return;
+    }
+
+    if (editingLessonId === lesson.id) resetLessonForm();
+
+    alert("Leçon supprimée.");
+    await loadLessons(db);
   }
 
   window.initJambareAdmin = initJambareAdmin;
