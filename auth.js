@@ -1,11 +1,4 @@
-
-(() => {
-  const config = window.JAMBARE_CONFIG;
-  const client = window.supabase.createClient(
-    config.SUPABASE_URL,
-    config.SUPABASE_KEY
-  );
-
+const client = window.supabaseClient;
   const modules = document.getElementById("modules");
   modules.hidden = true;
 
