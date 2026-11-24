@@ -108,6 +108,7 @@ const client = window.supabaseClient;
       }
 
       await checkAccess(data.session);
+      if (window.initJambareAdmin) await window.initJambareAdmin();
     });
 
   document.getElementById("signupForm")
