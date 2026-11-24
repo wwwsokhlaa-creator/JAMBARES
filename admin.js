@@ -18,7 +18,14 @@
       .eq("id", user.id)
       .single();
 
-    if (error || profile?.role !== "owner") return;
+    if (error) {
+  console.error("Erreur profil administration :", error);
+  return;
+}
+if (profile?.role !== "owner") {
+  console.error("Rôle détecté :", profile?.role);
+  return;
+}
 
     if (document.getElementById("jambare-admin")) return;
 
