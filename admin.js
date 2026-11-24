@@ -1,12 +1,16 @@
 
 (() => {
   let loading = false;
+  let panel = null;
 
-  async function initAdmin() {
+  function showStatus(text) {
+    const status = document.getElementById("jambare-admin-status");
+    if (status) status.textContent = text;
+  }
+
+  async function initJambareAdmin(user) {
     if (loading) return;
     loading = true;
-
-    let panel;
 
     try {
       const client = window.supabaseClient;
@@ -15,23 +19,27 @@
         throw new Error("Connexion Supabase introuvable.");
       }
 
-      const { data: userData, error: userError } =
-        await client.auth.getUser();
+      if (!user) {
+        const { data, error } = await client.auth.getUser();
+        if (error) throw error;
+        user = data.user;
+      }
 
-      if (userError) throw userError;
+      if (!user) {
+        throw new Error("Aucun utilisateur connecté.");
+      }
 
-      const user = userData?.user;
-      if (!user) return;
-
-      const { data: profile, error: profileError } =
-        await client.from("profiles")
-          .select("role, full_name")
-          .eq("id", user.id)
-          .maybeSingle();
+      const { data: profile, error: profileError } = await client
+        .from("profiles")
+        .select("role, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
 
       if (profileError) throw profileError;
 
-      if (profile?.role !== "owner") return;
+      if (profile?.role !== "owner") {
+        throw new Error("Accès réservé au propriétaire.");
+      }
 
       panel = document.getElementById("jambare-admin");
 
@@ -49,70 +57,77 @@
       }
 
       panel.innerHTML = `
-        <div style="background:#14251b;color:white;padding:20px;border-radius:12px;margin:20px 0;">
+        <div style="
+          background:#14251b;
+          color:white;
+          padding:20px;
+          margin:20px 0;
+          border-radius:12px;
+        ">
           <h2>ESPACE PROPRIÉTAIRE JAMBARE</h2>
-          <p>Bienvenue ${escapeText(profile.full_name || "Propriétaire")}</p>
+          <p id="jambare-owner-name"></p>
+          <p id="jambare-admin-status">Chargement...</p>
+
           <hr>
           <h3>Gestion des militaires</h3>
+          <button id="refresh-users">Actualiser les comptes</button>
           <div id="admin-users">Chargement des comptes...</div>
+
           <hr>
-          <h3>Formations disponibles</h3>
+          <h3>Formations</h3>
+          <button id="refresh-courses">Actualiser les formations</button>
           <div id="admin-courses">Chargement des formations...</div>
-          <p id="admin-message"></p>
         </div>
       `;
+
+      document.getElementById("jambare-owner-name").textContent =
+        "Propriétaire : " + (profile.full_name || "JAMBARE");
+
+      document.getElementById("refresh-users").onclick =
+        () => loadUsers(client);
+
+      document.getElementById("refresh-courses").onclick =
+        () => loadCourses(client);
 
       await loadUsers(client);
       await loadCourses(client);
 
+      showStatus("Espace propriétaire chargé.");
     } catch (error) {
-      console.error("JAMBARE ADMIN :", error);
-
-      if (panel) {
-        const message = panel.querySelector("#admin-message");
-        if (message) {
-          message.textContent = "Erreur : " + error.message;
-        }
-      }
+      console.error("Erreur administration JAMBARE :", error);
+      showStatus("Erreur : " + error.message);
     } finally {
       loading = false;
     }
   }
 
-  function escapeText(value) {
-    return String(value).replace(/[&<>"']/g, char => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[char]);
-  }
-
   async function loadUsers(client) {
     const area = document.getElementById("admin-users");
+    if (!area) return;
+
+    area.textContent = "Chargement des comptes...";
 
     const { data, error } = await client
       .from("profiles")
-      .select("id, full_name, nom_guerre, role")
+      .select("id, full_name, nom_guerre, role, created_at")
       .order("created_at", { ascending: false });
 
     if (error) {
-      area.textContent = "Erreur de chargement : " + error.message;
+      area.textContent = "Erreur : " + error.message;
       return;
     }
 
     area.innerHTML = "";
 
     if (!data || data.length === 0) {
-      area.textContent = "Aucun compte trouvé.";
+      area.textContent = "Aucun compte enregistré.";
       return;
     }
 
     data.forEach(user => {
-      const item = document.createElement("div");
-      item.style.cssText =
-        "background:#fff;color:#222;padding:12px;margin:10px 0;border-radius:8px;";
+      const card = document.createElement("div");
+      card.style.cssText =
+        "background:white;color:#222;padding:12px;margin:10px 0;border-radius:8px;";
 
       const name = document.createElement("strong");
       name.textContent = user.full_name || "Nom non renseigné";
@@ -122,24 +137,29 @@
         "Nom de guerre : " + (user.nom_guerre || "Non renseigné") +
         " | Rôle : " + user.role;
 
-      item.append(name, details);
+      card.append(name, details);
 
       if (user.role !== "owner") {
         const select = document.createElement("select");
+        select.style.cssText = "padding:8px;max-width:100%;";
 
-        [
+        const roles = [
           ["pending", "En attente"],
           ["military", "Militaire autorisé"],
           ["trainer", "Formateur"],
           ["admin", "Administrateur"]
-        ].forEach(([value, label]) => {
+        ];
+
+        roles.forEach(([value, label]) => {
           const option = document.createElement("option");
           option.value = value;
           option.textContent = label;
           select.appendChild(option);
         });
 
-        select.value = user.role;
+        select.value = roles.some(([value]) => value === user.role)
+          ? user.role
+          : "pending";
 
         const button = document.createElement("button");
         button.textContent = "Enregistrer le rôle";
@@ -147,34 +167,36 @@
 
         button.onclick = async () => {
           button.disabled = true;
+          button.textContent = "Enregistrement...";
 
-          const { error } = await client.rpc(
-            "set_jambare_role",
-            {
-              p_user_id: user.id,
-              p_new_role: select.value
-            }
-          );
+          const { error } = await client.rpc("set_jambare_role", {
+            p_user_id: user.id,
+            p_new_role: select.value
+          });
 
           button.disabled = false;
+          button.textContent = "Enregistrer le rôle";
 
           if (error) {
-            alert("Erreur : " + error.message);
+            alert("Modification impossible : " + error.message);
           } else {
             alert("Rôle mis à jour.");
             await loadUsers(client);
           }
         };
 
-        item.append(select, button);
+        card.append(select, button);
       }
 
-      area.appendChild(item);
+      area.appendChild(card);
     });
   }
 
   async function loadCourses(client) {
     const area = document.getElementById("admin-courses");
+    if (!area) return;
+
+    area.textContent = "Chargement des formations...";
 
     const { data, error } = await client
       .from("courses")
@@ -190,5 +212,13 @@
       : "Aucune formation enregistrée pour le moment.";
   }
 
-  window.initJambareAdmin = initAdmin;
+  window.initJambareAdmin = initJambareAdmin;
+
+  window.addEventListener("jambare:owner-ready", () => {
+    initJambareAdmin(window.JAMBARE_AUTH_USER);
+  });
+
+  if (window.JAMBARE_AUTH_USER) {
+    initJambareAdmin(window.JAMBARE_AUTH_USER);
+  }
 })();
