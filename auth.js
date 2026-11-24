@@ -1,6 +1,12 @@
-const client = window.supabaseClient;
+
+(() => {
+  const client = window.supabaseClient;
   const modules = document.getElementById("modules");
-  modules.hidden = true;
+
+  if (!client || !modules) {
+    console.error("Supabase ou espace pédagogique introuvable.");
+    return;
+  }
 
   const area = document.createElement("section");
   area.id = "authArea";
@@ -23,6 +29,7 @@ const client = window.supabaseClient;
     </form>
 
     <hr>
+
     <h3>Créer un compte</h3>
     <form id="signupForm">
       <input id="fullName" type="text"
@@ -39,40 +46,55 @@ const client = window.supabaseClient;
   `;
 
   const message = document.getElementById("authMessage");
+  let activeUserId = null;
+  let adminInitializedFor = null;
+  let accessCheck = Promise.resolve();
 
   function showMessage(text) {
     message.textContent = text;
   }
 
+  function showLogin(text) {
+    modules.hidden = true;
+    area.hidden = false;
+    showMessage(text);
+  }
+
   async function checkAccess(session) {
     if (!session) {
-      modules.hidden = true;
-      area.hidden = false;
-      showMessage("Connecte-toi ou crée ton compte.");
+      activeUserId = null;
+      adminInitializedFor = null;
+      showLogin("Connecte-toi ou crée ton compte militaire.");
       return;
     }
+
+    const user = session.user;
 
     const { data, error } = await client
       .from("profiles")
       .select("full_name, role")
-      .eq("id", session.user.id)
+      .eq("id", user.id)
       .maybeSingle();
 
     if (error || !data) {
-      modules.hidden = true;
-      showMessage("Profil introuvable. Contacte le propriétaire.");
+      await client.auth.signOut();
+      activeUserId = null;
+      adminInitializedFor = null;
+      showLogin("Profil introuvable. Contacte le propriétaire.");
       return;
     }
 
-    const allowed = ["military", "trainer", "admin", "owner"];
+    const allowed = ["owner", "admin", "trainer", "military"];
 
     if (!allowed.includes(data.role)) {
-      modules.hidden = true;
-      showMessage(
-        "Compte en attente d'autorisation. Réessaie plus tard."
-      );
+      activeUserId = null;
+      adminInitializedFor = null;
+      await client.auth.signOut();
+      showLogin("Compte en attente d'autorisation. Réessaie après validation.");
       return;
     }
+
+    activeUserId = user.id;
 
     area.innerHTML = `
       <h2>Bienvenue sur JAMBARE</h2>
@@ -88,13 +110,31 @@ const client = window.supabaseClient;
         await client.auth.signOut();
         location.reload();
       });
+
+    if (
+      data.role === "owner" &&
+      adminInitializedFor !== user.id &&
+      window.initJambareAdmin
+    ) {
+      adminInitializedFor = user.id;
+      await window.initJambareAdmin();
+    }
+  }
+
+  function queueAccessCheck(session) {
+    accessCheck = accessCheck
+      .then(() => checkAccess(session))
+      .catch(error => {
+        console.error("Erreur de vérification :", error);
+        showLogin("Erreur de vérification. Recharge la page.");
+      });
   }
 
   document.getElementById("loginForm")
-    .addEventListener("submit", async (event) => {
+    .addEventListener("submit", async event => {
       event.preventDefault();
 
-      const email = document.getElementById("email").value;
+      const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
 
       showMessage("Connexion en cours...");
@@ -103,26 +143,30 @@ const client = window.supabaseClient;
         .signInWithPassword({ email, password });
 
       if (error) {
-        showMessage("Connexion impossible : vérifie tes identifiants.");
+        showMessage("Connexion impossible : " + error.message);
         return;
       }
 
-      await checkAccess(data.session);
-      if (window.initJambareAdmin) await window.initJambareAdmin();
+      queueAccessCheck(data.session);
+      await accessCheck;
     });
 
   document.getElementById("signupForm")
-    .addEventListener("submit", async (event) => {
+    .addEventListener("submit", async event => {
       event.preventDefault();
 
-      const fullName = document.getElementById("fullName").value;
-      const nomGuerre = document.getElementById("nomGuerre").value;
-      const email = document.getElementById("newEmail").value;
-      const password = document.getElementById("newPassword").value;
+      const fullName =
+        document.getElementById("fullName").value.trim();
+      const nomGuerre =
+        document.getElementById("nomGuerre").value.trim();
+      const email =
+        document.getElementById("newEmail").value.trim();
+      const password =
+        document.getElementById("newPassword").value;
 
       showMessage("Création du compte en cours...");
 
-      const { error } = await client.auth.signUp({
+      const { data, error } = await client.auth.signUp({
         email,
         password,
         options: {
@@ -138,21 +182,33 @@ const client = window.supabaseClient;
         return;
       }
 
-      showMessage(
-        "Inscription enregistrée. Vérifie ton e-mail, puis attends l'autorisation du propriétaire."
-      );
+      if (!data.session) {
+        showMessage(
+          "Inscription enregistrée. Vérifie ton e-mail. " +
+          "Ton accès sera disponible après autorisation."
+        );
+        return;
+      }
+
+      queueAccessCheck(data.session);
+      await accessCheck;
     });
 
-  client.auth.onAuthStateChange(async (event, session) => {
-    if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
-      await checkAccess(session);
+  client.auth.onAuthStateChange((event, session) => {
+    if (
+      event === "SIGNED_IN" ||
+      event === "SIGNED_OUT" ||
+      event === "TOKEN_REFRESHED"
+    ) {
+      queueAccessCheck(session);
     }
   });
 
-  client.auth.getSession().then(async ({ data }) => {
-  await checkAccess(data.session);
-  if (window.initJambareAdmin) {
-    await window.initJambareAdmin();
-  }
-});
+  client.auth.getSession().then(({ data, error }) => {
+    if (error) {
+      showLogin("Impossible de vérifier la session. Recharge la page.");
+      return;
+    }
+    queueAccessCheck(data.session);
+  });
 })();
