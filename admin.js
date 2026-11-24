@@ -12,7 +12,9 @@
 
     const { data: sessionData } = await client.auth.getSession();
     const user = sessionData?.session?.user;
-    if (!user) return;
+
+alert(user ? "Session Supabase active !" : "Aucune session Supabase !");
+if (!user) return;
 
     const { data: profile, error } = await client
       .from("profiles")
