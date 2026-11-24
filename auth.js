@@ -29,7 +29,6 @@
     </form>
 
     <hr>
-
     <h3>Créer un compte</h3>
     <form id="signupForm">
       <input id="fullName" type="text"
@@ -46,9 +45,8 @@
   `;
 
   const message = document.getElementById("authMessage");
-  let activeUserId = null;
-  let adminInitializedFor = null;
   let accessCheck = Promise.resolve();
+  let adminInitializedFor = null;
 
   function showMessage(text) {
     message.textContent = text;
@@ -62,7 +60,7 @@
 
   async function checkAccess(session) {
     if (!session) {
-      activeUserId = null;
+      window.JAMBARE_AUTH_USER = null;
       adminInitializedFor = null;
       showLogin("Connecte-toi ou crée ton compte militaire.");
       return;
@@ -77,9 +75,7 @@
       .maybeSingle();
 
     if (error || !data) {
-      await client.auth.signOut();
-      activeUserId = null;
-      adminInitializedFor = null;
+      console.error("Erreur profil :", error);
       showLogin("Profil introuvable. Contacte le propriétaire.");
       return;
     }
@@ -87,14 +83,13 @@
     const allowed = ["owner", "admin", "trainer", "military"];
 
     if (!allowed.includes(data.role)) {
-      activeUserId = null;
-      adminInitializedFor = null;
+      window.JAMBARE_AUTH_USER = null;
       await client.auth.signOut();
-      showLogin("Compte en attente d'autorisation. Réessaie après validation.");
+      showLogin("Compte en attente d'autorisation.");
       return;
     }
 
-    activeUserId = user.id;
+    window.JAMBARE_AUTH_USER = user;
 
     area.innerHTML = `
       <h2>Bienvenue sur JAMBARE</h2>
@@ -111,13 +106,14 @@
         location.reload();
       });
 
-    if (
-      data.role === "owner" &&
-      adminInitializedFor !== user.id &&
-      window.initJambareAdmin
-    ) {
+    if (data.role === "owner" && adminInitializedFor !== user.id) {
       adminInitializedFor = user.id;
-      await window.initJambareAdmin();
+
+      if (typeof window.initJambareAdmin === "function") {
+        await window.initJambareAdmin(user);
+      } else {
+        window.dispatchEvent(new Event("jambare:owner-ready"));
+      }
     }
   }
 
@@ -126,8 +122,10 @@
       .then(() => checkAccess(session))
       .catch(error => {
         console.error("Erreur de vérification :", error);
-        showLogin("Erreur de vérification. Recharge la page.");
+        showLogin("Erreur de vérification : " + error.message);
       });
+
+    return accessCheck;
   }
 
   document.getElementById("loginForm")
@@ -147,22 +145,17 @@
         return;
       }
 
-      queueAccessCheck(data.session);
-      await accessCheck;
+      await queueAccessCheck(data.session);
     });
 
   document.getElementById("signupForm")
     .addEventListener("submit", async event => {
       event.preventDefault();
 
-      const fullName =
-        document.getElementById("fullName").value.trim();
-      const nomGuerre =
-        document.getElementById("nomGuerre").value.trim();
-      const email =
-        document.getElementById("newEmail").value.trim();
-      const password =
-        document.getElementById("newPassword").value;
+      const fullName = document.getElementById("fullName").value.trim();
+      const nomGuerre = document.getElementById("nomGuerre").value.trim();
+      const email = document.getElementById("newEmail").value.trim();
+      const password = document.getElementById("newPassword").value;
 
       showMessage("Création du compte en cours...");
 
@@ -190,8 +183,7 @@
         return;
       }
 
-      queueAccessCheck(data.session);
-      await accessCheck;
+      await queueAccessCheck(data.session);
     });
 
   client.auth.onAuthStateChange((event, session) => {
@@ -209,6 +201,7 @@
       showLogin("Impossible de vérifier la session. Recharge la page.");
       return;
     }
+
     queueAccessCheck(data.session);
   });
 })();
