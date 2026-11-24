@@ -21,6 +21,7 @@ if (!user) return;
       .select("role, full_name")
       .eq("id", user.id)
       .single();
+    alert("Rôle lu par admin.js : " + (profile?.role || "introuvable"));
 
     if (error) {
   console.error("Erreur profil administration :", error);
