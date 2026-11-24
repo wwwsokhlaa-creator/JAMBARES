@@ -15,6 +15,7 @@
 
 alert(user ? "Session Supabase active !" : "Aucune session Supabase !");
 if (!user) return;
+    alert("Session détectée : " + user.email);
 
     const { data: profile, error } = await client
       .from("profiles")
