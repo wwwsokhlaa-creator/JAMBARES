@@ -14,33 +14,36 @@
   modules.before(area);
 
   area.innerHTML = `
-    <h2>Accès sécurisé à JAMBARE</h2>
+    <h2>Bienvenue sur JAMBARE</h2>
     <p id="authMessage">
-      Connecte-toi ou crée ton compte militaire.
-      Toute inscription doit être autorisée.
+      Connecte-toi ou crée gratuitement ton compte militaire.
     </p>
 
+    <h3>Connexion</h3>
     <form id="loginForm">
-      <input id="email" type="email"
-        placeholder="Adresse e-mail" required>
-      <input id="password" type="password"
+      <input id="loginIdentifier" type="text"
+        placeholder="E-mail ou téléphone (+221...)"
+        required>
+      <input id="loginPassword" type="password"
         placeholder="Mot de passe" required>
       <button type="submit">Se connecter</button>
     </form>
 
     <hr>
-    <h3>Créer un compte</h3>
+
+    <h3>Créer un compte militaire</h3>
     <form id="signupForm">
       <input id="fullName" type="text"
-        placeholder="Nom et prénom" required>
+        placeholder="Prénom et nom" required>
       <input id="nomGuerre" type="text"
-        placeholder="Nom de guerre">
-      <input id="newEmail" type="email"
-        placeholder="Adresse e-mail" required>
+        placeholder="Nom de guerre" required>
+      <input id="newIdentifier" type="text"
+        placeholder="E-mail ou téléphone (+221...)"
+        required>
       <input id="newPassword" type="password"
         placeholder="Mot de passe (8 caractères minimum)"
         minlength="8" required>
-      <button type="submit">Demander un accès</button>
+      <button type="submit">Créer mon compte</button>
     </form>
   `;
 
@@ -56,6 +59,14 @@
     modules.hidden = true;
     area.hidden = false;
     showMessage(text);
+  }
+
+  function isEmail(value) {
+    return value.includes("@");
+  }
+
+  function normalizePhone(value) {
+    return value.replace(/[\s().-]/g, "");
   }
 
   async function checkAccess(session) {
@@ -85,7 +96,7 @@
     if (!allowed.includes(data.role)) {
       window.JAMBARE_AUTH_USER = null;
       await client.auth.signOut();
-      showLogin("Compte en attente d'autorisation.");
+      showLogin("Ton compte ne dispose pas encore d'un accès.");
       return;
     }
 
@@ -93,9 +104,12 @@
 
     area.innerHTML = `
       <h2>Bienvenue sur JAMBARE</h2>
-      <p>Accès autorisé : ${data.role}</p>
+      <p id="welcomeRole"></p>
       <button id="logoutButton">Se déconnecter</button>
     `;
+
+    document.getElementById("welcomeRole").textContent =
+      "Accès autorisé : " + data.role;
 
     area.hidden = false;
     modules.hidden = false;
@@ -122,7 +136,7 @@
       .then(() => checkAccess(session))
       .catch(error => {
         console.error("Erreur de vérification :", error);
-        showLogin("Erreur de vérification : " + error.message);
+        showLogin("Erreur : " + error.message);
       });
 
     return accessCheck;
@@ -132,13 +146,19 @@
     .addEventListener("submit", async event => {
       event.preventDefault();
 
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
+      const identifier =
+        document.getElementById("loginIdentifier").value.trim();
+      const password =
+        document.getElementById("loginPassword").value;
 
       showMessage("Connexion en cours...");
 
+      const credentials = isEmail(identifier)
+        ? { email: identifier, password }
+        : { phone: normalizePhone(identifier), password };
+
       const { data, error } = await client.auth
-        .signInWithPassword({ email, password });
+        .signInWithPassword(credentials);
 
       if (error) {
         showMessage("Connexion impossible : " + error.message);
@@ -152,23 +172,53 @@
     .addEventListener("submit", async event => {
       event.preventDefault();
 
-      const fullName = document.getElementById("fullName").value.trim();
-      const nomGuerre = document.getElementById("nomGuerre").value.trim();
-      const email = document.getElementById("newEmail").value.trim();
-      const password = document.getElementById("newPassword").value;
+      const fullName =
+        document.getElementById("fullName").value.trim();
+      const nomGuerre =
+        document.getElementById("nomGuerre").value.trim();
+      const identifier =
+        document.getElementById("newIdentifier").value.trim();
+      const password =
+        document.getElementById("newPassword").value;
+
+      if (password.length < 8) {
+        showMessage("Le mot de passe doit contenir au moins 8 caractères.");
+        return;
+      }
 
       showMessage("Création du compte en cours...");
 
-      const { data, error } = await client.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            nom_guerre: nomGuerre
-          }
+      const options = {
+        data: {
+          full_name: fullName,
+          nom_guerre: nomGuerre
         }
-      });
+      };
+
+      let result;
+
+      if (isEmail(identifier)) {
+        result = await client.auth.signUp({
+          email: identifier,
+          password,
+          options
+        });
+      } else {
+        const phone = normalizePhone(identifier);
+
+        if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+          showMessage("Entre un numéro au format international, par exemple +221771234567.");
+          return;
+        }
+
+        result = await client.auth.signUp({
+          phone,
+          password,
+          options
+        });
+      }
+
+      const { data, error } = result;
 
       if (error) {
         showMessage("Inscription impossible : " + error.message);
@@ -177,8 +227,8 @@
 
       if (!data.session) {
         showMessage(
-          "Inscription enregistrée. Vérifie ton e-mail. " +
-          "Ton accès sera disponible après autorisation."
+          "Compte créé. Une confirmation est encore nécessaire. " +
+          "Vérifie les réglages de confirmation dans Supabase."
         );
         return;
       }
