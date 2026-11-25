@@ -253,7 +253,7 @@
     if (error) {
       console.error(error);
       return;
-    }
+    } 
 
     await updateUser(data.session);
 
