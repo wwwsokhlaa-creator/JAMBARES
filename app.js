@@ -144,6 +144,72 @@
     }
   }
 
+  async function openHistory() {
+    if (!currentUser) {
+      showMessage("Connecte-toi pour consulter ton historique.");
+      return;
+    }
+
+    showMessage("Chargement de ton historique...");
+
+    try {
+      const { data: history, error } = await client()
+        .rpc("get_my_assessment_history");
+
+      if (error) throw error;
+
+      content.replaceChildren();
+
+      const heading = document.createElement("h2");
+      heading.textContent = "Mon historique des examens";
+      content.append(heading, backButton());
+
+      if (!history || history.length === 0) {
+        const p = document.createElement("p");
+        p.textContent = "Tu n'as pas encore passé d'examen.";
+        content.appendChild(p);
+        content.hidden = false;
+        return;
+      }
+
+      history.forEach(attempt => {
+        const card = document.createElement("article");
+        card.style.cssText =
+          "border:1px solid #ddd;border-radius:12px;padding:16px;margin:14px 0;";
+
+        const title = document.createElement("h3");
+        title.textContent = attempt.assessment_title || "Examen";
+
+        const score = document.createElement("p");
+        score.textContent =
+          "Score : " + attempt.score + " / " + attempt.total_questions;
+
+        const percentage = document.createElement("p");
+        percentage.textContent =
+          "Résultat : " + attempt.percentage + " %";
+
+        const date = document.createElement("p");
+        date.textContent = "Date : " +
+          (attempt.completed_at
+            ? new Date(attempt.completed_at).toLocaleString("fr-FR")
+            : "Non renseignée");
+
+        const status = document.createElement("p");
+        status.textContent = Number(attempt.percentage) >= 70
+          ? "Réussite"
+          : "À améliorer";
+
+        card.append(title, score, percentage, date, status);
+        content.appendChild(card);
+      });
+
+      content.hidden = false;
+    } catch (error) {
+      console.error("Historique JAMBARE :", error);
+      showMessage("Impossible de charger l'historique : " + error.message);
+    }
+  }
+
   async function openEvaluations() {
     if (!currentUser) {
       showMessage("Connecte-toi pour accéder aux évaluations.");
@@ -165,7 +231,12 @@
 
       const heading = document.createElement("h2");
       heading.textContent = "Évaluations JAMBARE";
-      content.append(heading, backButton());
+
+      content.append(
+        heading,
+        backButton(),
+        makeButton("📊 Mon historique", openHistory)
+      );
 
       if (!exams || exams.length === 0) {
         const p = document.createElement("p");
@@ -232,7 +303,7 @@
 
     const heading = document.createElement("h2");
     heading.textContent = exam.title;
-    content.append(heading);
+    content.append(heading, backButton());
 
     const info = document.createElement("p");
     info.textContent = questions.length + " question(s)";
@@ -374,21 +445,35 @@
         : "Réponse incorrecte";
 
       const correct = document.createElement("p");
-      const options = question && Array.isArray(question.options)
-        ? question.options
-        : [];
+      let options = question ? question.options : [];
+
+      if (typeof options === "string") {
+        try {
+          options = JSON.parse(options);
+        } catch {
+          options = [];
+        }
+      }
+
+      if (!Array.isArray(options)) options = [];
 
       correct.textContent =
-        "Bonne réponse : " + String(options[item.correct_index] ?? item.correct_index);
+        "Bonne réponse : " +
+        String(options[item.correct_index] ?? item.correct_index);
 
       const explanation = document.createElement("p");
-      explanation.textContent = item.explanation || "Aucune explication disponible.";
+      explanation.textContent =
+        item.explanation || "Aucune explication disponible.";
 
       card.append(title, answer, correct, explanation);
       content.appendChild(card);
     });
 
-    content.appendChild(makeButton("Retour aux examens", openEvaluations));
+    content.append(
+      makeButton("Retour aux examens", openEvaluations),
+      makeButton("📊 Mon historique", openHistory)
+    );
+
     content.hidden = false;
   }
 
