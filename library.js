@@ -245,6 +245,42 @@
   }
 
   async function openDocument(db, area, name) {
+  try {
+    const saved = await getOffline(name);
+    let blob;
+
+    if (navigator.onLine) {
+      const url = await getSignedUrl(db, name);
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error("Téléchargement impossible.");
+      }
+
+      blob = await response.blob();
+    } else if (saved) {
+      blob = saved.blob;
+    } else {
+      throw new Error("Ce document n'est pas enregistré sur ce téléphone.");
+    }
+
+    const pdf = new Blob([blob], { type: "application/pdf" });
+    const url = URL.createObjectURL(pdf);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    alert("PDF téléchargé. Ouvre-le depuis le dossier Téléchargements de ton téléphone.");
+  } catch (error) {
+    alert("Erreur : " + error.message);
+  }
+  }
     try {
       const saved = await getOffline(name).catch(() => null);
 
