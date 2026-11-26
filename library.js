@@ -17,7 +17,6 @@
       area.id = "spaceContent";
       area.style.cssText =
         "background:white;padding:18px;margin-top:18px;border-radius:14px;";
-
       modules.appendChild(area);
     }
 
@@ -35,10 +34,8 @@
 
   function message(area, text) {
     area.replaceChildren();
-
     const p = document.createElement("p");
     p.textContent = text;
-
     area.appendChild(p);
     area.hidden = false;
   }
@@ -49,11 +46,8 @@
 
       request.onupgradeneeded = () => {
         const db = request.result;
-
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, {
-            keyPath: "name"
-          });
+          db.createObjectStore(STORE_NAME, { keyPath: "name" });
         }
       };
 
@@ -66,10 +60,7 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        STORE_NAME,
-        "readwrite"
-      );
+      const transaction = db.transaction(STORE_NAME, "readwrite");
 
       transaction.objectStore(STORE_NAME).put({
         name,
@@ -93,10 +84,8 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const request = db
-        .transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME)
-        .get(name);
+      const request = db.transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME).get(name);
 
       request.onsuccess = () => {
         db.close();
@@ -114,10 +103,8 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const request = db
-        .transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME)
-        .getAll();
+      const request = db.transaction(STORE_NAME, "readonly")
+        .objectStore(STORE_NAME).getAll();
 
       request.onsuccess = () => {
         db.close();
@@ -135,11 +122,7 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        STORE_NAME,
-        "readwrite"
-      );
-
+      const transaction = db.transaction(STORE_NAME, "readwrite");
       transaction.objectStore(STORE_NAME).delete(name);
 
       transaction.oncomplete = () => {
@@ -160,37 +143,47 @@
       .createSignedUrl(name, 300);
 
     if (error) throw error;
-
     return data.signedUrl;
   }
 
-  // OUVERTURE DIRECTE DU DOCUMENT
   async function openDocument(db, name) {
     try {
+      let blob;
+
       if (navigator.onLine) {
         const url = await getSignedUrl(db, name);
+        const response = await fetch(url);
 
-        window.location.assign(url);
-        return;
+        if (!response.ok) {
+          throw new Error("Téléchargement impossible.");
+        }
+
+        blob = await response.blob();
+      } else {
+        const saved = await getOffline(name);
+
+        if (!saved) {
+          throw new Error(
+            "Ce document n'est pas enregistré sur ce téléphone."
+          );
+        }
+
+        blob = saved.blob;
       }
 
-      const saved = await getOffline(name);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.target = "_blank";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
 
-      if (!saved) {
-        alert(
-          "Ce document n'est pas enregistré sur ce téléphone."
-        );
-        return;
-      }
-
-      const url = URL.createObjectURL(saved.blob);
-
-      window.location.assign(url);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
 
     } catch (error) {
-      alert(
-        "Impossible d'ouvrir le document : " + error.message
-      );
+      alert("Impossible d'ouvrir le document : " + error.message);
     }
   }
 
@@ -204,7 +197,7 @@
       await db.auth.getSession();
 
     if (sessionError) {
-      message(area, "Erreur de connexion : " + sessionError.message);
+      message(area, "Erreur : " + sessionError.message);
       return;
     }
 
@@ -273,14 +266,11 @@
 
             const { error } = await db.storage
               .from(BUCKET)
-              .upload(path, file, {
-                upsert: false
-              });
+              .upload(path, file, { upsert: false });
 
             if (error) throw error;
 
             alert("Document ajouté avec succès.");
-
             fileInput.value = "";
             await loadFiles();
 
@@ -306,12 +296,7 @@
 
     const offlineList = document.createElement("div");
 
-    area.append(
-      listTitle,
-      fileList,
-      offlineTitle,
-      offlineList
-    );
+    area.append(listTitle, fileList, offlineTitle, offlineList);
 
     async function loadOfflineFiles() {
       offlineList.replaceChildren();
@@ -327,29 +312,21 @@
 
         savedFiles.forEach(saved => {
           const card = document.createElement("article");
-
           card.style.cssText =
             "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
 
           const name = document.createElement("p");
           name.textContent = "📄 " + saved.name;
 
-          const open = button(
-            "Consulter hors connexion",
-            () => openDocument(db, saved.name)
+          const open = button("Consulter hors connexion", () =>
+            openDocument(db, saved.name)
           );
 
-          const remove = button(
-            "Retirer du téléphone",
-            async () => {
-              if (!confirm(
-                "Retirer cette copie de ce téléphone ?"
-              )) return;
-
-              await removeOffline(saved.name);
-              await loadOfflineFiles();
-            }
-          );
+          const remove = button("Retirer du téléphone", async () => {
+            if (!confirm("Retirer cette copie de ce téléphone ?")) return;
+            await removeOffline(saved.name);
+            await loadOfflineFiles();
+          });
 
           card.append(name, open, remove);
           offlineList.appendChild(card);
@@ -357,8 +334,7 @@
 
       } catch (error) {
         offlineList.textContent =
-          "Stockage hors connexion indisponible : " +
-          error.message;
+          "Stockage hors connexion indisponible : " + error.message;
       }
     }
 
@@ -369,35 +345,27 @@
         .from(BUCKET)
         .list("", {
           limit: 100,
-          sortBy: {
-            column: "name",
-            order: "asc"
-          }
+          sortBy: { column: "name", order: "asc" }
         });
 
       fileList.replaceChildren();
 
       if (error) {
-        fileList.textContent = navigator.onLine
-          ? "Erreur : " + error.message
-          : "Connexion indisponible. Consulte les copies enregistrées plus bas.";
-
+        fileList.textContent =
+          "Erreur : " + error.message;
         await loadOfflineFiles();
         return;
       }
 
-      const documents = (files || []).filter(
-        file => file.id
-      );
+      const documents = (files || []).filter(file => file.id);
 
       if (documents.length === 0) {
         fileList.textContent =
           "Aucun document disponible pour le moment.";
       }
 
-      for (const file of documents) {
+      documents.forEach(file => {
         const card = document.createElement("article");
-
         card.style.cssText =
           "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
 
@@ -419,19 +387,13 @@
               const response = await fetch(url);
 
               if (!response.ok) {
-                throw new Error(
-                  "Téléchargement du document impossible."
-                );
+                throw new Error("Téléchargement impossible.");
               }
 
               const blob = await response.blob();
-
               await saveOffline(file.name, blob);
 
-              alert(
-                "Document enregistré sur ce téléphone. Tu pourras le consulter sans Internet."
-              );
-
+              alert("Document enregistré sur ce téléphone.");
               await loadOfflineFiles();
 
             } catch (error) {
@@ -443,30 +405,40 @@
           }
         );
 
-        const download = button(
-          "Télécharger",
-          async () => {
-            try {
-              const url = await getSignedUrl(db, file.name);
+        // TÉLÉCHARGEMENT DIRECT VERS LE TÉLÉPHONE
+        const download = button("Télécharger", async () => {
+          download.disabled = true;
+          download.textContent = "Téléchargement...";
 
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = file.name;
-              link.target = "_blank";
-              link.rel = "noopener";
+          try {
+            const url = await getSignedUrl(db, file.name);
+            const response = await fetch(url);
 
-              document.body.appendChild(link);
-              link.click();
-              link.remove();
-
-            } catch (error) {
-              alert(
-                "Téléchargement impossible : " +
-                error.message
-              );
+            if (!response.ok) {
+              throw new Error("Le téléchargement a échoué.");
             }
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = file.name;
+            link.style.display = "none";
+
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+
+          } catch (error) {
+            alert("Erreur de téléchargement : " + error.message);
+          } finally {
+            download.disabled = false;
+            download.textContent = "Télécharger";
           }
-        );
+        });
 
         card.append(name, open, save, download);
 
@@ -483,10 +455,7 @@
                 .remove([file.name]);
 
               if (error) {
-                alert(
-                  "Suppression impossible : " +
-                  error.message
-                );
+                alert("Suppression impossible : " + error.message);
               } else {
                 await loadFiles();
               }
@@ -497,7 +466,7 @@
         }
 
         fileList.appendChild(card);
-      }
+      });
 
       await loadOfflineFiles();
     }
@@ -510,24 +479,20 @@
     const modules = document.getElementById("modules");
     if (!modules) return;
 
-    modules.addEventListener(
-      "click",
-      event => {
-        const card = event.target.closest(".module");
-        if (!card) return;
+    modules.addEventListener("click", event => {
+      const card = event.target.closest(".module");
+      if (!card) return;
 
-        const title = card.querySelector("h3");
+      const title = card.querySelector("h3");
 
-        if (
-          !title ||
-          title.textContent.trim() !== "Bibliothèque"
-        ) return;
+      if (
+        !title ||
+        title.textContent.trim() !== "Bibliothèque"
+      ) return;
 
-        event.stopImmediatePropagation();
-        openLibrary();
-      },
-      true
-    );
+      event.stopImmediatePropagation();
+      openLibrary();
+    }, true);
   }
 
   activateLibrary();
