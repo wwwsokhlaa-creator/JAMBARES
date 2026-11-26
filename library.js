@@ -47,11 +47,42 @@
   }
 
   async function openDocument(db, name) {
+    const area = document.getElementById("spaceContent");
+    if (!area) return;
+
     try {
+      area.replaceChildren();
+
+      const heading = document.createElement("h2");
+      heading.textContent = "📖 Consultation : " + name;
+
+      const close = button("← Fermer le document", () => {
+        area.replaceChildren();
+        openLibrary();
+      });
+
+      const status = document.createElement("p");
+      status.textContent = "Chargement du document...";
+
+      const viewer = document.createElement("iframe");
+      viewer.title = "Lecteur de document JAMBARE";
+      viewer.style.cssText =
+        "width:100%;height:75vh;border:1px solid #ddd;border-radius:10px;background:white;";
+
+      area.append(heading, close, status, viewer);
+      area.hidden = false;
+
       const url = await getSignedUrl(db, name);
-      window.open(url, "_blank");
+
+      viewer.src = url + "#toolbar=1&navpanes=1&scrollbar=1";
+
+      status.textContent = "Document prêt à consulter.";
+
     } catch (error) {
-      alert("Impossible d'ouvrir le document : " + error.message);
+      message(
+        area,
+        "Impossible d'afficher le document : " + error.message
+      );
     }
   }
 
@@ -194,6 +225,12 @@
         const name = document.createElement("p");
         name.textContent = "📄 " + file.name;
 
+        // CONSULTER DIRECTEMENT SUR JAMBARE
+        const consult = button("Consulter", () => {
+          openDocument(db, file.name);
+        });
+
+        // TÉLÉCHARGER SUR LE TÉLÉPHONE
         const download = button("Télécharger", async () => {
           download.disabled = true;
           download.textContent = "Téléchargement...";
@@ -228,7 +265,7 @@
           }
         });
 
-        card.append(name, download);
+        card.append(name, consult, download);
 
         if (isAdmin) {
           const remove = button(
