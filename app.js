@@ -16,6 +16,7 @@
     content.id = "spaceContent";
     content.style.cssText =
       "background:white;padding:18px;margin-top:18px;border-radius:14px;";
+
     const grid = modules.querySelector(".module-grid");
     if (grid) grid.after(content);
     else modules.appendChild(content);
@@ -46,6 +47,7 @@
     });
   }
 
+  // FORMATIONS ET LEÇONS
   async function openFormations() {
     if (!currentUser) {
       showMessage("Connecte-toi pour consulter les formations.");
@@ -84,7 +86,8 @@
         title.textContent = course.title;
 
         const description = document.createElement("p");
-        description.textContent = course.description || "Aucune description.";
+        description.textContent =
+          course.description || "Aucune description.";
 
         const details = document.createElement("p");
         details.textContent =
@@ -95,8 +98,15 @@
         lessonArea.hidden = true;
 
         const lessonButton = makeButton("Voir les leçons", async () => {
+          if (!lessonArea.hidden) {
+            lessonArea.hidden = true;
+            lessonButton.textContent = "Voir les leçons";
+            return;
+          }
+
           lessonArea.hidden = false;
           lessonArea.textContent = "Chargement des leçons...";
+          lessonButton.textContent = "Masquer les leçons";
 
           const { data: lessons, error: lessonError } = await client()
             .from("lessons")
@@ -108,7 +118,8 @@
           lessonArea.replaceChildren();
 
           if (lessonError) {
-            lessonArea.textContent = "Erreur : " + lessonError.message;
+            lessonArea.textContent =
+              "Erreur : " + lessonError.message;
             return;
           }
 
@@ -119,7 +130,8 @@
 
           lessons.forEach((lesson, index) => {
             const item = document.createElement("div");
-            item.style.cssText = "border-top:1px solid #ddd;padding:12px 0;";
+            item.style.cssText =
+              "border-top:1px solid #ddd;padding:12px 0;";
 
             const h = document.createElement("h4");
             h.textContent = (index + 1) + ". " + lesson.title;
@@ -133,17 +145,25 @@
           });
         });
 
-        card.append(title, description, details, lessonButton, lessonArea);
+        card.append(
+          title,
+          description,
+          details,
+          lessonButton,
+          lessonArea
+        );
+
         content.appendChild(card);
       }
 
       content.hidden = false;
     } catch (error) {
-      console.error(error);
+      console.error("Formations JAMBARE :", error);
       showMessage("Erreur lors du chargement : " + error.message);
     }
   }
 
+  // HISTORIQUE DES EXAMENS
   async function openHistory() {
     if (!currentUser) {
       showMessage("Connecte-toi pour consulter ton historique.");
@@ -162,6 +182,7 @@
 
       const heading = document.createElement("h2");
       heading.textContent = "Mon historique des examens";
+
       content.append(heading, backButton());
 
       if (!history || history.length === 0) {
@@ -206,10 +227,107 @@
       content.hidden = false;
     } catch (error) {
       console.error("Historique JAMBARE :", error);
-      showMessage("Impossible de charger l'historique : " + error.message);
+      showMessage(
+        "Impossible de charger l'historique : " + error.message
+      );
     }
   }
 
+  // CLASSEMENT JAMBARE
+  async function openLeaderboard() {
+    if (!currentUser) {
+      showMessage("Connecte-toi pour consulter le classement.");
+      return;
+    }
+
+    showMessage("Chargement du classement...");
+
+    try {
+      const { data, error } = await client()
+        .rpc("get_jambare_leaderboard");
+
+      if (error) throw error;
+
+      content.replaceChildren();
+
+      const heading = document.createElement("h2");
+      heading.textContent = "🏆 Classement JAMBARE";
+
+      content.append(heading, backButton());
+
+      if (!data || data.length === 0) {
+        const p = document.createElement("p");
+        p.textContent =
+          "Aucun résultat disponible pour le moment.";
+        content.appendChild(p);
+        content.hidden = false;
+        return;
+      }
+
+      const table = document.createElement("table");
+      table.style.cssText =
+        "width:100%;border-collapse:collapse;margin-top:18px;";
+
+      const headers = [
+        "Rang",
+        "Nom de guerre",
+        "Examens",
+        "Réussite"
+      ];
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+
+      headers.forEach(label => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        th.style.cssText =
+          "padding:10px;border-bottom:2px solid #c7a65b;text-align:left;";
+        headerRow.appendChild(th);
+      });
+
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+
+      data.forEach(player => {
+        const tr = document.createElement("tr");
+
+        [
+          player.rang,
+          player.nom_guerre,
+          player.examens,
+          Number(player.taux_reussite).toFixed(1) + " %"
+        ].forEach(value => {
+          const td = document.createElement("td");
+          td.textContent = String(value);
+          td.style.cssText =
+            "padding:12px 8px;border-bottom:1px solid #ddd;";
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = "overflow-x:auto;";
+      wrapper.appendChild(table);
+
+      content.appendChild(wrapper);
+      content.hidden = false;
+
+    } catch (error) {
+      console.error("Classement JAMBARE :", error);
+      showMessage(
+        "Impossible de charger le classement : " + error.message
+      );
+    }
+  }
+
+  // LISTE DES EXAMENS
   async function openEvaluations() {
     if (!currentUser) {
       showMessage("Connecte-toi pour accéder aux évaluations.");
@@ -235,7 +353,8 @@
       content.append(
         heading,
         backButton(),
-        makeButton("📊 Mon historique", openHistory)
+        makeButton("📊 Mon historique", openHistory),
+        makeButton("🏆 Classement", openLeaderboard)
       );
 
       if (!exams || exams.length === 0) {
@@ -255,13 +374,19 @@
         title.textContent = exam.title;
 
         const description = document.createElement("p");
-        description.textContent = exam.description || "Évaluation de connaissances.";
+        description.textContent =
+          exam.description || "Évaluation de connaissances.";
 
         const duration = document.createElement("p");
         duration.textContent =
-          "Durée : " + (exam.duration_minutes || "Non précisée") + " minute(s)";
+          "Durée : " +
+          (exam.duration_minutes || "Non précisée") +
+          " minute(s)";
 
-        const start = makeButton("Commencer l'examen", () => startExam(exam));
+        const start = makeButton(
+          "Commencer l'examen",
+          () => startExam(exam)
+        );
 
         card.append(title, description, duration, start);
         content.appendChild(card);
@@ -269,11 +394,14 @@
 
       content.hidden = false;
     } catch (error) {
-      console.error(error);
-      showMessage("Impossible de charger les examens : " + error.message);
+      console.error("Évaluations JAMBARE :", error);
+      showMessage(
+        "Impossible de charger les examens : " + error.message
+      );
     }
   }
 
+  // DEMARRER UN EXAMEN
   async function startExam(exam) {
     showMessage("Chargement des questions...");
 
@@ -293,16 +421,20 @@
 
       renderExam(exam, questions);
     } catch (error) {
-      console.error(error);
-      showMessage("Erreur lors du chargement des questions : " + error.message);
+      console.error("Questions JAMBARE :", error);
+      showMessage(
+        "Erreur lors du chargement des questions : " + error.message
+      );
     }
   }
 
+  // AFFICHER LES QUESTIONS
   function renderExam(exam, questions) {
     content.replaceChildren();
 
     const heading = document.createElement("h2");
     heading.textContent = exam.title;
+
     content.append(heading, backButton());
 
     const info = document.createElement("p");
@@ -317,10 +449,13 @@
         "border:1px solid #ddd;border-radius:10px;padding:14px;margin:16px 0;";
 
       const legend = document.createElement("legend");
-      legend.textContent = (index + 1) + ". " + question.prompt;
+      legend.textContent =
+        (index + 1) + ". " + question.prompt;
+
       fieldset.appendChild(legend);
 
       let options = question.options;
+
       if (typeof options === "string") {
         try {
           options = JSON.parse(options);
@@ -342,7 +477,11 @@
         radio.value = String(optionIndex);
         radio.required = true;
 
-        label.append(radio, document.createTextNode(" " + String(option)));
+        label.append(
+          radio,
+          document.createTextNode(" " + String(option))
+        );
+
         fieldset.appendChild(label);
       });
 
@@ -352,6 +491,7 @@
     const submit = document.createElement("button");
     submit.type = "submit";
     submit.textContent = "Soumettre mes réponses";
+
     form.appendChild(submit);
 
     form.addEventListener("submit", async event => {
@@ -365,7 +505,9 @@
         );
 
         if (!selected) {
-          showMessage("Réponds à toutes les questions avant de soumettre.");
+          showMessage(
+            "Réponds à toutes les questions avant de soumettre."
+          );
           return;
         }
 
@@ -376,10 +518,13 @@
       submit.textContent = "Correction en cours...";
 
       try {
-        const { data, error } = await client().rpc("grade_assessment", {
-          p_assessment_id: exam.id,
-          p_answers: answers
-        });
+        const { data, error } = await client().rpc(
+          "grade_assessment",
+          {
+            p_assessment_id: exam.id,
+            p_answers: answers
+          }
+        );
 
         if (error) throw error;
 
@@ -390,11 +535,15 @@
         }
 
         showResults(result, questions);
+
       } catch (error) {
-        console.error(error);
+        console.error("Correction JAMBARE :", error);
         submit.disabled = false;
         submit.textContent = "Soumettre mes réponses";
-        alert("Impossible de corriger l'examen : " + error.message);
+
+        alert(
+          "Impossible de corriger l'examen : " + error.message
+        );
       }
     });
 
@@ -402,6 +551,7 @@
     content.hidden = false;
   }
 
+  // RESULTATS ET CORRECTIONS
   function showResults(result, questions) {
     content.replaceChildren();
 
@@ -426,17 +576,21 @@
     status.textContent = percentage >= 70
       ? "Félicitations ! Seuil de réussite atteint."
       : "Continue tes révisions et réessaie.";
+
     content.appendChild(status);
 
     (result.results || []).forEach((item, index) => {
-      const question = questions.find(q => q.id === item.question_id);
+      const question = questions.find(
+        q => q.id === item.question_id
+      );
 
       const card = document.createElement("article");
       card.style.cssText =
         "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
 
       const title = document.createElement("h4");
-      title.textContent = (index + 1) + ". " +
+      title.textContent =
+        (index + 1) + ". " +
         (question ? question.prompt : "Question");
 
       const answer = document.createElement("p");
@@ -444,7 +598,6 @@
         ? "Bonne réponse"
         : "Réponse incorrecte";
 
-      const correct = document.createElement("p");
       let options = question ? question.options : [];
 
       if (typeof options === "string") {
@@ -457,9 +610,12 @@
 
       if (!Array.isArray(options)) options = [];
 
+      const correct = document.createElement("p");
       correct.textContent =
         "Bonne réponse : " +
-        String(options[item.correct_index] ?? item.correct_index);
+        String(
+          options[item.correct_index] ?? item.correct_index
+        );
 
       const explanation = document.createElement("p");
       explanation.textContent =
@@ -471,12 +627,14 @@
 
     content.append(
       makeButton("Retour aux examens", openEvaluations),
-      makeButton("📊 Mon historique", openHistory)
+      makeButton("📊 Mon historique", openHistory),
+      makeButton("🏆 Classement", openLeaderboard)
     );
 
     content.hidden = false;
   }
 
+  // AUTRES ESPACES
   function openOtherSpace(name) {
     if (!currentUser) {
       showMessage("Connecte-toi pour accéder à cet espace.");
@@ -484,25 +642,36 @@
     }
 
     if (name === "Bibliothèque") {
-      showMessage("L'espace Bibliothèque sera activé dans la prochaine étape.");
+      showMessage(
+        "L'espace Bibliothèque sera activé dans la prochaine étape."
+      );
       return;
     }
 
     if (name === "Administration") {
-      if (currentRole !== "owner" && currentRole !== "admin") {
-        showMessage("Accès réservé au propriétaire et aux administrateurs.");
+      if (
+        currentRole !== "owner" &&
+        currentRole !== "admin"
+      ) {
+        showMessage(
+          "Accès réservé au propriétaire et aux administrateurs."
+        );
         return;
       }
 
       const panel = document.getElementById("jambareAdminPanel");
+
       if (panel) {
         panel.scrollIntoView({ behavior: "smooth" });
       } else {
-        showMessage("Le panneau d'administration n'est pas disponible.");
+        showMessage(
+          "Le panneau d'administration n'est pas disponible."
+        );
       }
     }
   }
 
+  // CLIC SUR LES ESPACES
   modules.addEventListener("click", event => {
     const card = event.target.closest(".module");
     if (!card) return;
@@ -512,9 +681,13 @@
 
     const name = heading.textContent.trim();
 
-    if (name === "Formations") openFormations();
-    else if (name === "Évaluations") openEvaluations();
-    else openOtherSpace(name);
+    if (name === "Formations") {
+      openFormations();
+    } else if (name === "Évaluations") {
+      openEvaluations();
+    } else {
+      openOtherSpace(name);
+    }
   });
 
   if (startButton) {
@@ -523,6 +696,7 @@
     });
   }
 
+  // IDENTIFICATION DE L'UTILISATEUR
   async function updateUser(session) {
     currentUser = session?.user || null;
     currentRole = null;
@@ -546,6 +720,7 @@
     currentRole = data?.role || null;
   }
 
+  // INITIALISATION
   async function initialize() {
     if (!client()) {
       console.error("Connexion Supabase introuvable.");
