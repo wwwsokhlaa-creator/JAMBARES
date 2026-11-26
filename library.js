@@ -1,9 +1,14 @@
 
 (() => {
+  "use strict";
+
   const BUCKET = "jambare-library";
   const DB_NAME = "JAMBARE_OFFLINE";
   const STORE_NAME = "documents";
+
   const client = () => window.supabaseClient;
+
+  let currentObjectUrl = null;
 
   function getContent() {
     let area = document.getElementById("spaceContent");
@@ -16,6 +21,7 @@
       area.id = "spaceContent";
       area.style.cssText =
         "background:white;padding:18px;margin-top:18px;border-radius:14px;";
+
       modules.appendChild(area);
     }
 
@@ -41,12 +47,20 @@
 
   function openOfflineDB() {
     return new Promise((resolve, reject) => {
+      if (!("indexedDB" in window)) {
+        reject(new Error("Le stockage hors connexion n'est pas disponible."));
+        return;
+      }
+
       const request = indexedDB.open(DB_NAME, 1);
 
       request.onupgradeneeded = () => {
         const db = request.result;
+
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: "name" });
+          db.createObjectStore(STORE_NAME, {
+            keyPath: "name"
+          });
         }
       };
 
@@ -60,6 +74,7 @@
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
+
       transaction.objectStore(STORE_NAME).put({
         name,
         blob,
@@ -75,6 +90,11 @@
         db.close();
         reject(transaction.error);
       };
+
+      transaction.onabort = () => {
+        db.close();
+        reject(transaction.error || new Error("Enregistrement interrompu."));
+      };
     });
   }
 
@@ -82,12 +102,13 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME).get(name);
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const request = transaction.objectStore(STORE_NAME).get(name);
 
       request.onsuccess = () => {
+        const result = request.result || null;
         db.close();
-        resolve(request.result || null);
+        resolve(result);
       };
 
       request.onerror = () => {
@@ -101,12 +122,13 @@
     const db = await openOfflineDB();
 
     return new Promise((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME).getAll();
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const request = transaction.objectStore(STORE_NAME).getAll();
 
       request.onsuccess = () => {
+        const result = request.result || [];
         db.close();
-        resolve(request.result || []);
+        resolve(result);
       };
 
       request.onerror = () => {
@@ -135,32 +157,81 @@
     });
   }
 
-  function showDocument(area, name, url) {
+  function getMimeType(name) {
+    const extension = name.split(".").pop().toLowerCase();
+
+    const types = {
+      pdf: "application/pdf",
+      txt: "text/plain",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    };
+
+    return types[extension] || "application/octet-stream";
+  }
+
+  function showDocument(area, name, url, isBlob = false) {
     const old = document.getElementById("jambare-document-preview");
+
     if (old) old.remove();
+
+    if (currentObjectUrl && currentObjectUrl !== url) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+    }
+
+    if (isBlob) {
+      currentObjectUrl = url;
+    }
 
     const preview = document.createElement("section");
     preview.id = "jambare-document-preview";
     preview.style.cssText =
-      "margin-top:18px;padding:12px;border:1px solid #ddd;border-radius:10px;";
+      "margin-top:18px;padding:16px;border:1px solid #ddd;border-radius:12px;background:#fff;";
 
     const heading = document.createElement("h3");
     heading.textContent = "Consultation : " + name;
 
+    const info = document.createElement("p");
+    info.textContent = isBlob
+      ? "Copie enregistrée sur ce téléphone. Tu peux l'ouvrir sans Internet."
+      : "Document disponible sur le serveur JAMBARE.";
+
+    const openLink = document.createElement("a");
+    openLink.href = url;
+    openLink.target = "_blank";
+    openLink.rel = "noopener";
+    openLink.textContent = "Ouvrir le document";
+    openLink.style.cssText =
+      "display:inline-block;background:#234b36;color:white;padding:14px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px 8px 8px 0;";
+
+    const downloadLink = document.createElement("a");
+    downloadLink.href = url;
+    downloadLink.download = name;
+    downloadLink.textContent = "Télécharger une copie";
+    downloadLink.style.cssText =
+      "display:inline-block;background:#234b36;color:white;padding:14px 20px;border-radius:8px;text-decoration:none;font-weight:bold;margin:8px 8px 8px 0;";
+
     const close = button("Fermer le document", () => {
       preview.remove();
-      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
     });
 
-    const frame = document.createElement("iframe");
-    frame.src = url;
-    frame.title = name;
-    frame.style.cssText =
-      "width:100%;height:70vh;border:1px solid #ccc;border-radius:8px;";
-
-    preview.append(heading, close, frame);
+    preview.append(heading, info, openLink, downloadLink, close);
     area.appendChild(preview);
-    preview.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    preview.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
   }
 
   async function getSignedUrl(db, name) {
@@ -169,34 +240,38 @@
       .createSignedUrl(name, 300);
 
     if (error) throw error;
+
     return data.signedUrl;
   }
 
   async function openDocument(db, area, name) {
     try {
-      if (navigator.onLine) {
-        const url = await getSignedUrl(db, name);
-        showDocument(area, name, url);
-        return;
-      }
-
-      const saved = await getOffline(name);
-      if (!saved) {
-        alert("Ce document n'est pas encore enregistré sur ce téléphone.");
-        return;
-      }
-
-      const url = URL.createObjectURL(saved.blob);
-      showDocument(area, name, url);
-    } catch (error) {
       const saved = await getOffline(name).catch(() => null);
 
-      if (saved) {
+      if (!navigator.onLine) {
+        if (!saved) {
+          alert("Ce document n'est pas enregistré sur ce téléphone.");
+          return;
+        }
+
         const url = URL.createObjectURL(saved.blob);
-        showDocument(area, name, url);
-      } else {
-        alert("Impossible d'ouvrir le document : " + error.message);
+        showDocument(area, name, url, true);
+        return;
       }
+
+      try {
+        const url = await getSignedUrl(db, name);
+        showDocument(area, name, url, false);
+      } catch (error) {
+        if (saved) {
+          const url = URL.createObjectURL(saved.blob);
+          showDocument(area, name, url, true);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      alert("Impossible d'ouvrir le document : " + error.message);
     }
   }
 
@@ -206,244 +281,288 @@
 
     if (!db || !area) return;
 
-    const { data: sessionData } = await db.auth.getSession();
-    const user = sessionData.session?.user;
+    try {
+      const { data: sessionData, error: sessionError } =
+        await db.auth.getSession();
 
-    if (!user) {
-      message(area, "Connecte-toi pour accéder à la bibliothèque.");
-      return;
-    }
+      if (sessionError) throw sessionError;
 
-    message(area, "Chargement de la bibliothèque...");
+      const user = sessionData.session?.user;
 
-    const { data: profile, error: profileError } = await db
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+      if (!user) {
+        message(area, "Connecte-toi pour accéder à la bibliothèque.");
+        return;
+      }
 
-    if (profileError || !profile) {
-      message(area, "Impossible de vérifier ton profil.");
-      return;
-    }
+      message(area, "Chargement de la bibliothèque...");
 
-    const isAdmin = ["owner", "admin"].includes(profile.role);
+      const { data: profile, error: profileError } = await db
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
 
-    area.replaceChildren();
+      if (profileError || !profile) {
+        message(area, "Impossible de vérifier ton profil.");
+        return;
+      }
 
-    const heading = document.createElement("h2");
-    heading.textContent = "📚 Bibliothèque JAMBARE";
+      const isAdmin = ["owner", "admin"].includes(profile.role);
 
-    const back = button("← Retour aux espaces", () => {
-      area.hidden = true;
-    });
+      area.replaceChildren();
 
-    area.append(heading, back);
+      const heading = document.createElement("h2");
+      heading.textContent = "📚 Bibliothèque JAMBARE";
 
-    if (isAdmin) {
-      const uploadTitle = document.createElement("h3");
-      uploadTitle.textContent = "Ajouter un document";
-
-      const fileInput = document.createElement("input");
-      fileInput.type = "file";
-      fileInput.accept = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
-
-      const uploadButton = button("Téléverser le document", async () => {
-        const file = fileInput.files[0];
-
-        if (!file) {
-          alert("Choisis d'abord un document.");
-          return;
-        }
-
-        uploadButton.disabled = true;
-        uploadButton.textContent = "Envoi en cours...";
-
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = Date.now() + "-" + safeName;
-
-        const { error } = await db.storage
-          .from(BUCKET)
-          .upload(path, file, { upsert: false });
-
-        if (error) {
-          alert("Erreur : " + error.message);
-        } else {
-          alert("Document ajouté avec succès.");
-          fileInput.value = "";
-          await loadFiles();
-        }
-
-        uploadButton.disabled = false;
-        uploadButton.textContent = "Téléverser le document";
+      const back = button("← Retour aux espaces", () => {
+        area.hidden = true;
       });
 
-      area.append(uploadTitle, fileInput, uploadButton);
-    }
+      area.append(heading, back);
 
-    const listTitle = document.createElement("h3");
-    listTitle.textContent = "Documents disponibles";
-    area.appendChild(listTitle);
+      if (isAdmin) {
+        const uploadTitle = document.createElement("h3");
+        uploadTitle.textContent = "Ajouter un document";
 
-    const fileList = document.createElement("div");
-    area.appendChild(fileList);
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept =
+          ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt";
 
-    const offlineTitle = document.createElement("h3");
-    offlineTitle.textContent = "📥 Mes documents hors connexion";
-    area.appendChild(offlineTitle);
+        fileInput.style.display = "block";
+        fileInput.style.margin = "12px 0";
 
-    const offlineList = document.createElement("div");
-    area.appendChild(offlineList);
+        const uploadButton = button("Téléverser le document", async () => {
+          const file = fileInput.files?.[0];
 
-    async function loadOfflineFiles() {
-      offlineList.replaceChildren();
+          if (!file) {
+            alert("Choisis d'abord un document.");
+            return;
+          }
 
-      try {
-        const savedFiles = await getAllOffline();
+          uploadButton.disabled = true;
+          uploadButton.textContent = "Envoi en cours...";
 
-        if (savedFiles.length === 0) {
+          try {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const path = Date.now() + "-" + safeName;
+
+            const { error } = await db.storage
+              .from(BUCKET)
+              .upload(path, file, {
+                upsert: false,
+                contentType: file.type || getMimeType(file.name)
+              });
+
+            if (error) throw error;
+
+            alert("Document ajouté avec succès.");
+            fileInput.value = "";
+            await loadFiles();
+          } catch (error) {
+            alert("Erreur : " + error.message);
+          } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = "Téléverser le document";
+          }
+        });
+
+        area.append(uploadTitle, fileInput, uploadButton);
+      }
+
+      const listTitle = document.createElement("h3");
+      listTitle.textContent = "Documents disponibles";
+      area.appendChild(listTitle);
+
+      const fileList = document.createElement("div");
+      area.appendChild(fileList);
+
+      const offlineTitle = document.createElement("h3");
+      offlineTitle.textContent = "📥 Mes documents hors connexion";
+      area.appendChild(offlineTitle);
+
+      const offlineList = document.createElement("div");
+      area.appendChild(offlineList);
+
+      async function loadOfflineFiles() {
+        offlineList.replaceChildren();
+
+        try {
+          const savedFiles = await getAllOffline();
+
+          if (savedFiles.length === 0) {
+            offlineList.textContent =
+              "Aucun document enregistré hors connexion sur ce téléphone.";
+            return;
+          }
+
+          savedFiles.forEach(saved => {
+            const card = document.createElement("article");
+            card.style.cssText =
+              "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
+
+            const name = document.createElement("p");
+            name.textContent = "📄 " + saved.name;
+
+            const open = button("Consulter hors connexion", () => {
+              const url = URL.createObjectURL(saved.blob);
+              showDocument(area, saved.name, url, true);
+            });
+
+            const remove = button("Retirer du téléphone", async () => {
+              if (!confirm("Retirer cette copie de ce téléphone ?")) return;
+
+              try {
+                await removeOffline(saved.name);
+                await loadOfflineFiles();
+              } catch (error) {
+                alert("Suppression impossible : " + error.message);
+              }
+            });
+
+            card.append(name, open, remove);
+            offlineList.appendChild(card);
+          });
+        } catch (error) {
           offlineList.textContent =
-            "Aucun document enregistré hors connexion sur ce téléphone.";
+            "Stockage hors connexion indisponible : " + error.message;
+        }
+      }
+
+      async function loadFiles() {
+        fileList.textContent = "Chargement des documents...";
+
+        const { data: files, error } = await db.storage
+          .from(BUCKET)
+          .list("", {
+            limit: 100,
+            sortBy: {
+              column: "name",
+              order: "asc"
+            }
+          });
+
+        fileList.replaceChildren();
+
+        if (error) {
+          fileList.textContent = navigator.onLine
+            ? "Erreur : " + error.message
+            : "Connexion indisponible. Consulte les copies enregistrées plus bas.";
+
+          await loadOfflineFiles();
           return;
         }
 
-        savedFiles.forEach(saved => {
+        const documents = (files || []).filter(file => file.id);
+
+        if (documents.length === 0) {
+          fileList.textContent =
+            "Aucun document disponible pour le moment.";
+        }
+
+        for (const file of documents) {
           const card = document.createElement("article");
           card.style.cssText =
             "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
 
           const name = document.createElement("p");
-          name.textContent = "📄 " + saved.name;
+          name.textContent = "📄 " + file.name;
 
-          const open = button("Consulter hors connexion", () => {
-            const url = URL.createObjectURL(saved.blob);
-            showDocument(area, saved.name, url);
-          });
+          const open = button("Consulter", () =>
+            openDocument(db, area, file.name)
+          );
 
-          const remove = button("Retirer du téléphone", async () => {
-            if (!confirm("Retirer cette copie de ce téléphone ?")) return;
-            await removeOffline(saved.name);
-            await loadOfflineFiles();
-          });
+          const save = button("Enregistrer hors connexion", async () => {
+            save.disabled = true;
+            save.textContent = "Enregistrement...";
 
-          card.append(name, open, remove);
-          offlineList.appendChild(card);
-        });
-      } catch (error) {
-        offlineList.textContent =
-          "Stockage hors connexion indisponible : " + error.message;
-      }
-    }
+            try {
+              const url = await getSignedUrl(db, file.name);
+              const response = await fetch(url);
 
-    async function loadFiles() {
-      fileList.textContent = "Chargement des documents...";
+              if (!response.ok) {
+                throw new Error("Téléchargement du document impossible.");
+              }
 
-      const { data: files, error } = await db.storage
-        .from(BUCKET)
-        .list("", {
-          limit: 100,
-          sortBy: { column: "name", order: "asc" }
-        });
+              const downloadedBlob = await response.blob();
 
-      fileList.replaceChildren();
+              const blob = new Blob(
+                [downloadedBlob],
+                { type: getMimeType(file.name) }
+              );
 
-      if (error) {
-        fileList.textContent = navigator.onLine
-          ? "Erreur : " + error.message
-          : "Connexion indisponible. Consulte les copies enregistrées plus bas.";
-        await loadOfflineFiles();
-        return;
-      }
+              await saveOffline(file.name, blob);
 
-      const documents = (files || []).filter(file => file.id);
+              alert(
+                "Document enregistré sur ce téléphone. Tu pourras le consulter sans Internet."
+              );
 
-      if (documents.length === 0) {
-        fileList.textContent = "Aucun document disponible pour le moment.";
-      }
-
-      for (const file of documents) {
-        const card = document.createElement("article");
-        card.style.cssText =
-          "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
-
-        const name = document.createElement("p");
-        name.textContent = "📄 " + file.name;
-
-        const open = button("Consulter", () =>
-          openDocument(db, area, file.name)
-        );
-
-        const save = button("Enregistrer hors connexion", async () => {
-          save.disabled = true;
-          save.textContent = "Enregistrement...";
-
-          try {
-            const url = await getSignedUrl(db, file.name);
-            const response = await fetch(url);
-
-            if (!response.ok) {
-              throw new Error("Téléchargement du document impossible.");
+              await loadOfflineFiles();
+            } catch (error) {
+              alert("Erreur : " + error.message);
+            } finally {
+              save.disabled = false;
+              save.textContent = "Enregistrer hors connexion";
             }
+          });
 
-            const blob = await response.blob();
-            await saveOffline(file.name, blob);
+          const download = button("Télécharger", async () => {
+            try {
+              const url = await getSignedUrl(db, file.name);
 
-            alert("Document enregistré sur ce téléphone. Tu pourras le consulter sans Internet.");
-            await loadOfflineFiles();
-          } catch (error) {
-            alert("Erreur : " + error.message);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = file.name;
+              link.target = "_blank";
+              link.rel = "noopener";
+
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+            } catch (error) {
+              alert("Téléchargement impossible : " + error.message);
+            }
+          });
+
+          card.append(name, open, save, download);
+
+          if (isAdmin) {
+            const remove = button("Supprimer du serveur", async () => {
+              if (!confirm(
+                "Supprimer définitivement ce document de la bibliothèque ?"
+              )) {
+                return;
+              }
+
+              try {
+                const { error } = await db.storage
+                  .from(BUCKET)
+                  .remove([file.name]);
+
+                if (error) throw error;
+
+                alert("Document supprimé du serveur.");
+                await loadFiles();
+              } catch (error) {
+                alert("Suppression impossible : " + error.message);
+              }
+            });
+
+            card.appendChild(remove);
           }
 
-          save.disabled = false;
-          save.textContent = "Enregistrer hors connexion";
-        });
-
-        const download = button("Télécharger", async () => {
-          try {
-            const url = await getSignedUrl(db, file.name);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = file.name;
-            link.target = "_blank";
-            link.rel = "noopener";
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-          } catch (error) {
-            alert("Téléchargement impossible : " + error.message);
-          }
-        });
-
-        card.append(name, open, save, download);
-
-        if (isAdmin) {
-          const remove = button("Supprimer du serveur", async () => {
-            if (!confirm("Supprimer définitivement ce document de la bibliothèque ?")) {
-              return;
-            }
-
-            const { error } = await db.storage
-              .from(BUCKET)
-              .remove([file.name]);
-
-            if (error) {
-              alert("Suppression impossible : " + error.message);
-            } else {
-              await loadFiles();
-            }
-          });
-
-          card.appendChild(remove);
+          fileList.appendChild(card);
         }
 
-        fileList.appendChild(card);
+        await loadOfflineFiles();
       }
 
-      await loadOfflineFiles();
+      await loadFiles();
+      area.hidden = false;
+    } catch (error) {
+      console.error("Bibliothèque JAMBARE :", error);
+      message(area, "Erreur : " + error.message);
     }
-
-    await loadFiles();
-    area.hidden = false;
   }
 
   function activateLibrary() {
@@ -455,7 +574,10 @@
       if (!card) return;
 
       const title = card.querySelector("h3");
-      if (!title || title.textContent.trim() !== "Bibliothèque") return;
+
+      if (!title || title.textContent.trim() !== "Bibliothèque") {
+        return;
+      }
 
       event.stopImmediatePropagation();
       openLibrary();
