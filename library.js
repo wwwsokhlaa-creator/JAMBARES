@@ -1,9 +1,6 @@
 
 (() => {
   const BUCKET = "jambare-library";
-  const DB_NAME = "JAMBARE_OFFLINE";
-  const STORE_NAME = "documents";
-
   const client = () => window.supabaseClient;
 
   function getContent() {
@@ -40,103 +37,6 @@
     area.hidden = false;
   }
 
-  function openOfflineDB() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: "name" });
-        }
-      };
-
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async function saveOffline(name, blob) {
-    const db = await openOfflineDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-
-      transaction.objectStore(STORE_NAME).put({
-        name,
-        blob,
-        savedAt: new Date().toISOString()
-      });
-
-      transaction.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-
-      transaction.onerror = () => {
-        db.close();
-        reject(transaction.error);
-      };
-    });
-  }
-
-  async function getOffline(name) {
-    const db = await openOfflineDB();
-
-    return new Promise((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME).get(name);
-
-      request.onsuccess = () => {
-        db.close();
-        resolve(request.result || null);
-      };
-
-      request.onerror = () => {
-        db.close();
-        reject(request.error);
-      };
-    });
-  }
-
-  async function getAllOffline() {
-    const db = await openOfflineDB();
-
-    return new Promise((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, "readonly")
-        .objectStore(STORE_NAME).getAll();
-
-      request.onsuccess = () => {
-        db.close();
-        resolve(request.result || []);
-      };
-
-      request.onerror = () => {
-        db.close();
-        reject(request.error);
-      };
-    });
-  }
-
-  async function removeOffline(name) {
-    const db = await openOfflineDB();
-
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).delete(name);
-
-      transaction.oncomplete = () => {
-        db.close();
-        resolve();
-      };
-
-      transaction.onerror = () => {
-        db.close();
-        reject(transaction.error);
-      };
-    });
-  }
-
   async function getSignedUrl(db, name) {
     const { data, error } = await db.storage
       .from(BUCKET)
@@ -148,42 +48,8 @@
 
   async function openDocument(db, name) {
     try {
-      let blob;
-
-      if (navigator.onLine) {
-        const url = await getSignedUrl(db, name);
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          throw new Error("Téléchargement impossible.");
-        }
-
-        blob = await response.blob();
-      } else {
-        const saved = await getOffline(name);
-
-        if (!saved) {
-          throw new Error(
-            "Ce document n'est pas enregistré sur ce téléphone."
-          );
-        }
-
-        blob = saved.blob;
-      }
-
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-
-      link.href = objectUrl;
-      link.target = "_blank";
-      link.rel = "noopener";
-
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-
+      const url = await getSignedUrl(db, name);
+      window.open(url, "_blank");
     } catch (error) {
       alert("Impossible d'ouvrir le document : " + error.message);
     }
@@ -293,53 +159,7 @@
 
     const fileList = document.createElement("div");
 
-    const offlineTitle = document.createElement("h3");
-    offlineTitle.textContent = "📥 Mes documents hors connexion";
-
-    const offlineList = document.createElement("div");
-
-    area.append(listTitle, fileList, offlineTitle, offlineList);
-
-    async function loadOfflineFiles() {
-      offlineList.replaceChildren();
-
-      try {
-        const savedFiles = await getAllOffline();
-
-        if (savedFiles.length === 0) {
-          offlineList.textContent =
-            "Aucun document enregistré hors connexion sur ce téléphone.";
-          return;
-        }
-
-        savedFiles.forEach(saved => {
-          const card = document.createElement("article");
-          card.style.cssText =
-            "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
-
-          const name = document.createElement("p");
-          name.textContent = "📄 " + saved.name;
-
-          const open = button("Consulter hors connexion", () =>
-            openDocument(db, saved.name)
-          );
-
-          const remove = button("Retirer du téléphone", async () => {
-            if (!confirm("Retirer cette copie de ce téléphone ?")) return;
-
-            await removeOffline(saved.name);
-            await loadOfflineFiles();
-          });
-
-          card.append(name, open, remove);
-          offlineList.appendChild(card);
-        });
-
-      } catch (error) {
-        offlineList.textContent =
-          "Stockage hors connexion indisponible : " + error.message;
-      }
-    }
+    area.append(listTitle, fileList);
 
     async function loadFiles() {
       fileList.textContent = "Chargement des documents...";
@@ -354,9 +174,7 @@
       fileList.replaceChildren();
 
       if (error) {
-        fileList.textContent =
-          "Erreur : " + error.message;
-        await loadOfflineFiles();
+        fileList.textContent = "Erreur : " + error.message;
         return;
       }
 
@@ -369,44 +187,13 @@
 
       documents.forEach(file => {
         const card = document.createElement("article");
+
         card.style.cssText =
           "border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;";
 
         const name = document.createElement("p");
         name.textContent = "📄 " + file.name;
 
-        const open = button("Consulter", () =>
-          openDocument(db, file.name)
-        );
-
-        const save = button(
-          "Enregistrer hors connexion",
-          async () => {
-            save.disabled = true;
-            save.textContent = "Enregistrement...";
-
-            try {
-              const { data: blob, error } = await db.storage
-                .from(BUCKET)
-                .download(file.name);
-
-              if (error) throw error;
-
-              await saveOffline(file.name, blob);
-
-              alert("Document enregistré sur ce téléphone.");
-              await loadOfflineFiles();
-
-            } catch (error) {
-              alert("Erreur : " + error.message);
-            } finally {
-              save.disabled = false;
-              save.textContent = "Enregistrer hors connexion";
-            }
-          }
-        );
-
-        // TÉLÉCHARGEMENT VERS LE DOSSIER TÉLÉCHARGEMENTS
         const download = button("Télécharger", async () => {
           download.disabled = true;
           download.textContent = "Téléchargement...";
@@ -423,7 +210,6 @@
 
             link.href = objectUrl;
             link.download = file.name;
-            link.setAttribute("download", file.name);
             link.style.display = "none";
 
             document.body.appendChild(link);
@@ -434,10 +220,6 @@
               URL.revokeObjectURL(objectUrl);
             }, 120000);
 
-            alert(
-              "Téléchargement lancé. Vérifie le dossier Téléchargements de ton téléphone."
-            );
-
           } catch (error) {
             alert("Échec du téléchargement : " + error.message);
           } finally {
@@ -446,7 +228,7 @@
           }
         });
 
-        card.append(name, open, save, download);
+        card.append(name, download);
 
         if (isAdmin) {
           const remove = button(
@@ -473,8 +255,6 @@
 
         fileList.appendChild(card);
       });
-
-      await loadOfflineFiles();
     }
 
     await loadFiles();
