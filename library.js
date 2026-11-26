@@ -173,9 +173,11 @@
 
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
+
       link.href = objectUrl;
       link.target = "_blank";
       link.rel = "noopener";
+
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -276,10 +278,10 @@
 
           } catch (error) {
             alert("Erreur : " + error.message);
+          } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = "Téléverser le document";
           }
-
-          uploadButton.disabled = false;
-          uploadButton.textContent = "Téléverser le document";
         }
       );
 
@@ -324,6 +326,7 @@
 
           const remove = button("Retirer du téléphone", async () => {
             if (!confirm("Retirer cette copie de ce téléphone ?")) return;
+
             await removeOffline(saved.name);
             await loadOfflineFiles();
           });
@@ -383,14 +386,12 @@
             save.textContent = "Enregistrement...";
 
             try {
-              const url = await getSignedUrl(db, file.name);
-              const response = await fetch(url);
+              const { data: blob, error } = await db.storage
+                .from(BUCKET)
+                .download(file.name);
 
-              if (!response.ok) {
-                throw new Error("Téléchargement impossible.");
-              }
+              if (error) throw error;
 
-              const blob = await response.blob();
               await saveOffline(file.name, blob);
 
               alert("Document enregistré sur ce téléphone.");
@@ -398,42 +399,47 @@
 
             } catch (error) {
               alert("Erreur : " + error.message);
+            } finally {
+              save.disabled = false;
+              save.textContent = "Enregistrer hors connexion";
             }
-
-            save.disabled = false;
-            save.textContent = "Enregistrer hors connexion";
           }
         );
 
-        // TÉLÉCHARGEMENT DIRECT VERS LE TÉLÉPHONE
+        // TÉLÉCHARGEMENT VERS LE DOSSIER TÉLÉCHARGEMENTS
         const download = button("Télécharger", async () => {
           download.disabled = true;
           download.textContent = "Téléchargement...";
 
           try {
-            const url = await getSignedUrl(db, file.name);
-            const response = await fetch(url);
+            const { data: blob, error } = await db.storage
+              .from(BUCKET)
+              .download(file.name);
 
-            if (!response.ok) {
-              throw new Error("Le téléchargement a échoué.");
-            }
+            if (error) throw error;
 
-            const blob = await response.blob();
             const objectUrl = URL.createObjectURL(blob);
-
             const link = document.createElement("a");
+
             link.href = objectUrl;
             link.download = file.name;
+            link.setAttribute("download", file.name);
             link.style.display = "none";
 
             document.body.appendChild(link);
             link.click();
             link.remove();
 
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+            setTimeout(() => {
+              URL.revokeObjectURL(objectUrl);
+            }, 120000);
+
+            alert(
+              "Téléchargement lancé. Vérifie le dossier Téléchargements de ton téléphone."
+            );
 
           } catch (error) {
-            alert("Erreur de téléchargement : " + error.message);
+            alert("Échec du téléchargement : " + error.message);
           } finally {
             download.disabled = false;
             download.textContent = "Télécharger";
